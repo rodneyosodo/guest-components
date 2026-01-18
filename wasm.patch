@@ -1,0 +1,13 @@
+diff --git a/vendor/github.com/containers/image/v5/manifest/oci.go b/vendor/github.com/containers/image/v5/manifest/oci.go
+index f714574e..63550ce2 100644
+--- a/vendor/github.com/containers/image/v5/manifest/oci.go
++++ b/vendor/github.com/containers/image/v5/manifest/oci.go
+@@ -172,7 +172,8 @@ func getEncryptedMediaType(mediatype string) (string, error) {
+ 	unsuffixedMediatype := strings.Split(mediatype, "+")[0]
+ 	switch unsuffixedMediatype {
+ 	case DockerV2Schema2LayerMediaType, imgspecv1.MediaTypeImageLayer,
+-		imgspecv1.MediaTypeImageLayerNonDistributable: //nolint:staticcheck // NonDistributable layers are deprecated, but we want to continue to support manipulating pre-existing images.
++		imgspecv1.MediaTypeImageLayerNonDistributable, //nolint:staticcheck // NonDistributable layers are deprecated, but we want to continue to support manipulating pre-existing images.
++		"application/vnd.wasm.content.layer.v1":
+ 		return mediatype + "+encrypted", nil
+ 	}
