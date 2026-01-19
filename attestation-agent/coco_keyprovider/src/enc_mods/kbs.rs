@@ -10,6 +10,38 @@ use reqwest::Url;
 
 const KBS_URL_PATH_PREFIX: &str = "kbs/v0/resource";
 
+/// Get the key from KBS using the given kid.
+/// This function constructs the appropriate KBS URL and retrieves the key.
+pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str) -> Result<Vec<u8>> {
+    let kid = kid.strip_prefix('/').unwrap_or(kid);
+    let client = reqwest::Client::new();
+    let mut resource_url = kbs_addr.clone();
+
+    let path = format!("{KBS_URL_PATH_PREFIX}/{kid}");
+    resource_url.set_path(&path);
+
+    debug!("Get KEK from {resource_url}");
+    let response = client
+        .get(resource_url)
+        .send()
+        .await
+        .context("Failed to send GET request to KBS")?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!("KBS returned error status: {}", response.status()));
+    }
+
+    let key = response
+        .bytes()
+        .await
+        .context("Failed to read response body from KBS")?
+        .to_vec();
+
+    debug!("Successfully retrieved KEK from KBS ({} bytes)", key.len());
+
+    Ok(key)
+}
+
 /// Register the given key with kid into the kbs. This request will be authorized with a
 /// JWT token, which will be signed by the private_key.
 pub(crate) async fn register_kek(

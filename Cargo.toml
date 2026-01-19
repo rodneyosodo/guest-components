@@ -15,6 +15,7 @@ members = [
     "image-rs",
     "ocicrypt-rs",
     "protos",
+    "tee-wasm-runner",
 ]
 
 [workspace.dependencies]

@@ -1,0 +1,25 @@
+# Build directory
+build/
+target/
+
+# Encryption keys
+*.pem
+*.key
+
+# Test directories
+/tmp/tee-wasm-test*/
+*.test
+
+# Logs
+*.log
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

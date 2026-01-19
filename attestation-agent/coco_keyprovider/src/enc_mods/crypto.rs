@@ -51,3 +51,24 @@ pub fn encrypt(data: &[u8], key: &[u8], iv: &[u8], algorithm: &Algorithm) -> Res
         }
     }
 }
+
+pub fn decrypt(data: &[u8], key: &[u8], iv: &[u8], algorithm: &Algorithm) -> Result<Vec<u8>> {
+    match algorithm {
+        Algorithm::A256GCM => {
+            use aes_gcm::{aead::Aead, KeyInit};
+            let decryption_key = Key::<Aes256Gcm>::from_slice(key);
+            let cipher = Aes256Gcm::new(decryption_key);
+            let nonce = Nonce::from_slice(iv);
+            cipher
+                .decrypt(nonce, data.as_ref())
+                .map_err(|e| anyhow!("Decrypt failed: {:?}", e))
+        }
+        Algorithm::A256CTR => {
+            use ctr::cipher::{KeyIvInit, StreamCipher};
+            let mut buf = data.to_vec();
+            let mut cipher = ctr::Ctr128BE::<Aes256>::new(key.into(), iv.into());
+            cipher.apply_keystream(&mut buf);
+            Ok(buf)
+        }
+    }
+}

@@ -16,8 +16,8 @@ use tokio::fs;
 
 use self::{crypto::Algorithm, kbs::register_kek};
 
-mod crypto;
-mod kbs;
+pub mod crypto;
+pub mod kbs;
 
 /// `AnnotationPacket` is what a encrypted image layer's
 /// `org.opencontainers.image.enc.keys.provider.attestation-agent`
@@ -150,7 +150,7 @@ async fn generate_key_parameters(input_params: &InputParams) -> Result<(Vec<u8>,
 
 /// Normalize the given keyid into (kbs addr, key path), s.t.
 /// converting `kbs://...` or `../..` to `(<kbs-addr>, <repository>/<type>/<tag>)`.
-fn normalize_path(keyid: &str) -> Result<(String, String)> {
+pub fn normalize_path(keyid: &str) -> Result<(String, String)> {
     debug!("normalize key id {keyid}");
     let path = keyid.strip_prefix(KBS_RESOURCE_URL_PREFIX).unwrap_or(keyid);
     let values: Vec<&str> = path.split('/').collect();
