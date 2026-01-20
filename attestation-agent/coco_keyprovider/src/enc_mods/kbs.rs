@@ -5,37 +5,59 @@
 
 use anyhow::*;
 use jwt_simple::prelude::{Claims, Duration, Ed25519KeyPair, EdDSAKeyPairLike};
+use kbs_protocol::{
+    evidence_provider::NativeEvidenceProvider, KbsClientBuilder, KbsClientCapabilities, ResourceUri,
+};
 use log::debug;
 use reqwest::Url;
+use std::sync::{Arc, Mutex};
 
 const KBS_URL_PATH_PREFIX: &str = "kbs/v0/resource";
 
-/// Get the key from KBS using the given kid.
-/// This function constructs the appropriate KBS URL and retrieves the key.
+/// Global KBS client cache to reuse attestation sessions
+static KBS_CLIENT_CACHE: once_cell::sync::Lazy<
+    Arc<
+        Mutex<
+            Option<
+                kbs_protocol::client::KbsClient<
+                    Box<dyn kbs_protocol::evidence_provider::EvidenceProvider>,
+                >,
+            >,
+        >,
+    >,
+> = once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
+
+/// Get the key from KBS using the KBS protocol with attestation.
+/// This function performs attestation and retrieves the key securely.
 pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str) -> Result<Vec<u8>> {
     let kid = kid.strip_prefix('/').unwrap_or(kid);
-    let client = reqwest::Client::new();
-    let mut resource_url = kbs_addr.clone();
 
-    let path = format!("{KBS_URL_PATH_PREFIX}/{kid}");
-    resource_url.set_path(&path);
+    // Construct the resource URI in the format: kbs:///<repository>/<type>/<tag>
+    let resource_uri_str = format!("kbs:///{}", kid);
+    debug!(
+        "Fetching KEK from KBS with resource URI: {}",
+        resource_uri_str
+    );
 
-    debug!("Get KEK from {resource_url}");
-    let response = client
-        .get(resource_url)
-        .send()
+    let resource_uri: ResourceUri = resource_uri_str
+        .as_str()
+        .try_into()
+        .map_err(|e| anyhow!("Failed to parse resource URI: {}", e))?;
+
+    // Create or reuse KBS client with attestation
+    let evidence_provider = NativeEvidenceProvider::new()
+        .context("Failed to create evidence provider for attestation")?;
+
+    let mut kbs_client =
+        KbsClientBuilder::with_evidence_provider(Box::new(evidence_provider), kbs_addr.as_str())
+            .build()
+            .context("Failed to build KBS client")?;
+
+    debug!("Performing attestation and fetching KEK from KBS");
+    let key = kbs_client
+        .get_resource(resource_uri)
         .await
-        .context("Failed to send GET request to KBS")?;
-
-    if !response.status().is_success() {
-        return Err(anyhow!("KBS returned error status: {}", response.status()));
-    }
-
-    let key = response
-        .bytes()
-        .await
-        .context("Failed to read response body from KBS")?
-        .to_vec();
+        .context("Failed to get resource from KBS (attestation may have failed)")?;
 
     debug!("Successfully retrieved KEK from KBS ({} bytes)", key.len());
 
