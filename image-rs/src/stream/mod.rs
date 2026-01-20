@@ -82,7 +82,9 @@ pub async fn stream_processing(
     destination: &Path,
 ) -> StreamResult<String> {
     let dest = destination.to_path_buf();
-    let hasher = if diff_id.starts_with(DIGEST_SHA256_PREFIX) {
+    // If diff_id is empty (e.g., for encrypted images where digest is unknown),
+    // default to SHA256 for computing the digest
+    let hasher = if diff_id.is_empty() || diff_id.starts_with(DIGEST_SHA256_PREFIX) {
         LayerDigestHasher::Sha256(sha2::Sha256::new())
     } else if diff_id.starts_with(DIGEST_SHA512_PREFIX) {
         LayerDigestHasher::Sha512(sha2::Sha512::new())
@@ -105,7 +107,9 @@ pub async fn wasm_stream_processing(
 
     info!("wasm_stream_processing: destination={:?}", destination);
 
-    let hasher = if diff_id.starts_with(DIGEST_SHA256_PREFIX) {
+    // If diff_id is empty (e.g., for encrypted images where digest is unknown),
+    // default to SHA256 for computing the digest
+    let hasher = if diff_id.is_empty() || diff_id.starts_with(DIGEST_SHA256_PREFIX) {
         LayerDigestHasher::Sha256(sha2::Sha256::new())
     } else if diff_id.starts_with(DIGEST_SHA512_PREFIX) {
         LayerDigestHasher::Sha512(sha2::Sha512::new())

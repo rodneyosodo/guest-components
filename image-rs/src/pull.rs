@@ -226,7 +226,9 @@ impl<'a> PullClient<'a> {
         }
 
         // uncompressed digest should equal to the diff_ids in image_config.
-        if layer_meta.uncompressed_digest != diff_id {
+        // Skip validation if diff_id is empty (used for encrypted images where
+        // the decrypted digest is unknown until after decryption)
+        if !diff_id.is_empty() && layer_meta.uncompressed_digest != diff_id {
             return Err(PullLayerError::UnequalUncompressedDigest {
                 uncompressed_digest: layer_meta.uncompressed_digest,
                 diff_id,

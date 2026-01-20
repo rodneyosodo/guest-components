@@ -4,28 +4,15 @@
 //
 
 use anyhow::*;
+use base64::Engine;
 use jwt_simple::prelude::{Claims, Duration, Ed25519KeyPair, EdDSAKeyPairLike};
 use kbs_protocol::{
     evidence_provider::NativeEvidenceProvider, KbsClientBuilder, KbsClientCapabilities, ResourceUri,
 };
 use log::debug;
 use reqwest::Url;
-use std::sync::{Arc, Mutex};
 
 const KBS_URL_PATH_PREFIX: &str = "kbs/v0/resource";
-
-/// Global KBS client cache to reuse attestation sessions
-static KBS_CLIENT_CACHE: once_cell::sync::Lazy<
-    Arc<
-        Mutex<
-            Option<
-                kbs_protocol::client::KbsClient<
-                    Box<dyn kbs_protocol::evidence_provider::EvidenceProvider>,
-                >,
-            >,
-        >,
-    >,
-> = once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 
 /// Get the key from KBS using the KBS protocol with attestation.
 /// This function performs attestation and retrieves the key securely.
@@ -54,12 +41,54 @@ pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str) -> Result<Vec<u8>> {
             .context("Failed to build KBS client")?;
 
     debug!("Performing attestation and fetching KEK from KBS");
-    let key = kbs_client
+    let mut key = kbs_client
         .get_resource(resource_uri)
         .await
         .context("Failed to get resource from KBS (attestation may have failed)")?;
 
-    debug!("Successfully retrieved KEK from KBS ({} bytes)", key.len());
+    debug!("Retrieved KEK from KBS ({} bytes)", key.len());
+
+    // If the key is not 32 bytes (256-bit AES key), try base64 decoding
+    // Some KBS implementations return base64-encoded keys or text with newlines
+    if key.len() != 32 {
+        debug!(
+            "KEK is not 32 bytes (got {} bytes), attempting base64 decode",
+            key.len()
+        );
+
+        // First, try to interpret as UTF-8 string and trim whitespace
+        // This handles cases where KBS returns "base64string\n"
+        let key_str = String::from_utf8_lossy(&key);
+        let trimmed = key_str.trim();
+
+        debug!(
+            "Original length: {}, Trimmed length: {}",
+            key_str.len(),
+            trimmed.len()
+        );
+
+        let engine = base64::engine::general_purpose::STANDARD;
+        let decoded = engine.decode(trimmed.as_bytes()).context(format!(
+            "KBS returned key with invalid length: {} bytes (expected 32 bytes). \
+             Attempted base64 decode failed. Key data (trimmed): '{}'",
+            key.len(),
+            trimmed
+        ))?;
+
+        if decoded.len() == 32 {
+            debug!("Successfully decoded base64 KEK to 32 bytes");
+            key = decoded;
+        } else {
+            bail!(
+                "KBS returned key with invalid length: {} bytes (expected 32 bytes). \
+                 Base64 decode resulted in {} bytes.",
+                key.len(),
+                decoded.len()
+            );
+        }
+    }
+
+    debug!("Successfully retrieved and validated KEK from KBS (32 bytes)");
 
     Ok(key)
 }
