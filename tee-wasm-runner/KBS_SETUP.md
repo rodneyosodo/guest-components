@@ -282,6 +282,8 @@ sudo OCICRYPT_KEYPROVIDER_CONFIG=/etc/ocicrypt_keyprovider.conf RUST_LOG=info ./
   --wasm-args 5 --wasm-args 10
 ```
 
+coco_keyprovider --socket 127.0.0.1:50000 --kbs http://10.0.2.2:8082
+  
 ./target/release/tee-wasm-runner \
  --image-reference docker.io/rodneydav/wasm-addition:encrypted \
  --work-dir /tmp/tee-wasm-runner \
