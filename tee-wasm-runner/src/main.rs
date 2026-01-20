@@ -285,8 +285,15 @@ impl TeeWasmRunner {
                     .layers
                     .iter()
                     .map(|layer| {
-                        // Use layer digest as placeholder diff_id
-                        layer.digest.clone()
+                        // For encrypted images, we can't know the diff_id until after decryption
+                        // Use empty string to skip digest validation
+                        if is_encrypted {
+                            log::info!("Using empty diff_id for encrypted layer (digest validation will be skipped)");
+                            String::new()
+                        } else {
+                            // For non-encrypted images, use layer digest as placeholder diff_id
+                            layer.digest.clone()
+                        }
                     })
                     .collect()
             } else {
