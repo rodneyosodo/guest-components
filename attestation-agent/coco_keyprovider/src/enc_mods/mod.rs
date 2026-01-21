@@ -17,8 +17,8 @@ use tracing::{debug, info};
 
 use self::{crypto::Algorithm, kbs::register_kek};
 
-mod crypto;
-mod kbs;
+pub mod crypto;
+pub mod kbs;
 
 /// `AnnotationPacket` is what a encrypted image layer's
 /// `org.opencontainers.image.enc.keys.provider.attestation-agent`
@@ -150,7 +150,7 @@ async fn generate_key_parameters(input_params: &InputParams) -> Result<(Vec<u8>,
 /// Normalize the given keyid into (kbs addr, key path), s.t.
 /// converting `kbs://...` or `../..` to `(<kbs-addr>, <repository>/<type>/<tag>)`.
 /// Supports both `kbs://` and `kbs+<plugin>://` schemes.
-fn normalize_path(key_id: &str) -> Result<(String, String)> {
+pub fn normalize_path(key_id: &str) -> Result<(String, String)> {
     debug!("normalize key id {key_id}");
 
     if let Ok(resource_uri) = ResourceUri::try_from(key_id) {

@@ -1592,6 +1592,7 @@ dependencies = [
  "daemonize",
  "futures",
  "jwt-simple",
+ "kbs_protocol",
  "protos",
  "rand 0.10.2",
  "reqwest 0.13.4",
