@@ -18,6 +18,10 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 futures = "0.3.32"
 jwt-simple.workspace = true
+kbs_protocol = { path = "../kbs_protocol", default-features = false, features = [
+    "background_check",
+    "rust-crypto",
+] }
 protos = { path = "../../protos", default-features = false, features = [
     "grpc",
 ] }
@@ -38,3 +42,10 @@ shadow-rs.workspace = true
 rstest.workspace = true
 
 [features]
+default = ["all-attesters"]
+all-attesters = ["kbs_protocol/all-attesters"]
+az-snp-vtpm-attester = ["kbs_protocol/az-snp-vtpm-attester"]
+az-tdx-vtpm-attester = ["kbs_protocol/az-tdx-vtpm-attester"]
+tdx-attester = ["kbs_protocol/tdx-attester"]
+snp-attester = ["kbs_protocol/snp-attester"]
+tpm-attester = ["kbs_protocol/tpm-attester"]
