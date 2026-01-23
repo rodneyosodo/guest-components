@@ -74,14 +74,16 @@ endif
 CDH := confidential-data-hub
 AA := attestation-agent
 ASR := api-server-rest
+TEE_WASM_RUNNER := tee-wasm-runner
 
 BUILD_DIR := target/$(ARCH)-unknown-linux-$(LIBC)/release
 
 CDH_BINARY := $(BUILD_DIR)/$(CDH)
 AA_BINARY := $(BUILD_DIR)/$(AA)
 ASR_BINARY := $(BUILD_DIR)/$(ASR)
+TEE_WASM_RUNNER_BINARY := $(BUILD_DIR)/$(TEE_WASM_RUNNER)
 
-build: $(CDH_BINARY) $(ASR_BINARY) $(AA_BINARY)
+build: $(CDH_BINARY) $(ASR_BINARY) $(AA_BINARY) $(TEE_WASM_RUNNER_BINARY)
 	@echo guest components built for $(TEE_PLATFORM) succeeded!
 
 $(CDH_BINARY):
@@ -96,7 +98,11 @@ $(ASR_BINARY):
 	@echo build $(ASR) for $(TEE_PLATFORM)
 	cd $(ASR) && $(MAKE) ARCH=$(ARCH) LIBC=$(LIBC)
 
-install: $(CDH_BINARY) $(ASR_BINARY) $(AA_BINARY)
+$(TEE_WASM_RUNNER_BINARY):
+	@echo build $(TEE_WASM_RUNNER) for $(TEE_PLATFORM)
+	cargo build --release -p $(TEE_WASM_RUNNER) --features "$(ATTESTER)"
+
+install: $(CDH_BINARY) $(ASR_BINARY) $(AA_BINARY) $(TEE_WASM_RUNNER_BINARY)
 	install -D -m0755 $(CDH_BINARY) $(DESTDIR)/$(CDH)
 	install -D -m0755 $(AA_BINARY) $(DESTDIR)/$(AA)
 	install -D -m0755 $(ASR_BINARY) $(DESTDIR)/$(ASR)

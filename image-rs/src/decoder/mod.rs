@@ -119,6 +119,11 @@ impl TryFrom<&str> for Compression {
             media_type_str = manifest::IMAGE_LAYER_GZIP_MEDIA_TYPE;
         }
 
+        // Handle WASM media types - WASM layers are typically uncompressed
+        if media_type_str.contains("wasm.content.layer") {
+            return Ok(Compression::Uncompressed);
+        }
+
         let media_type = MediaType::from(media_type_str);
 
         let decoder = match media_type {

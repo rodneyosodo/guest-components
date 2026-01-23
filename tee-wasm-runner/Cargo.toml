@@ -1,0 +1,34 @@
+[package]
+name = "tee-wasm-runner"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[[bin]]
+name = "tee-wasm-runner"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+attestation-agent = { path = "../attestation-agent/attestation-agent", default-features = false, features = ["rust-crypto", "kbs"] }
+# Use keywrap-grpc for gRPC keyprovider integration with attestation-agent
+image-rs = { path = "../image-rs", default-features = false, features = [
+    "encryption-ring",
+    "keywrap-grpc",
+    "oci-client-rustls",
+    "signature",
+    "futures"
+] }
+log.workspace = true
+oci-client = { version = "0.15", default-features = false, features = ["rustls-tls"] }
+oci-spec = "0.8.4"
+resource_uri = { path = "../attestation-agent/deps/resource_uri" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
+clap = { workspace = true, features = ["derive"] }
+env_logger.workspace = true
+kbs_protocol = { path = "../attestation-agent/kbs_protocol", features = ["background_check", "rust-crypto"], default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+base64 = "0.22"
+futures-util = "0.3"

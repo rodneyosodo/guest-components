@@ -82,7 +82,9 @@ pub async fn stream_processing(
     destination: &Path,
 ) -> StreamResult<String> {
     let dest = destination.to_path_buf();
-    let hasher = if diff_id.starts_with(DIGEST_SHA256_PREFIX) {
+    // If diff_id is empty (e.g., for encrypted images where digest is unknown),
+    // default to SHA256 for computing the digest
+    let hasher = if diff_id.is_empty() || diff_id.starts_with(DIGEST_SHA256_PREFIX) {
         LayerDigestHasher::Sha256(sha2::Sha256::new())
     } else if diff_id.starts_with(DIGEST_SHA512_PREFIX) {
         LayerDigestHasher::Sha512(sha2::Sha512::new())
@@ -91,6 +93,54 @@ pub async fn stream_processing(
     };
 
     async_processing(layer_reader, hasher, dest).await
+}
+
+/// wasm_stream_processing handles WASM layer data by writing the raw bytes
+/// directly to a file (not unpacking as tar), and returns the layer digest.
+/// WASM files are binary modules, not tar archives.
+pub async fn wasm_stream_processing(
+    layer_reader: impl AsyncRead + Unpin,
+    diff_id: &str,
+    destination: &Path,
+) -> StreamResult<String> {
+    use log::info;
+
+    info!("wasm_stream_processing: destination={:?}", destination);
+
+    // If diff_id is empty (e.g., for encrypted images where digest is unknown),
+    // default to SHA256 for computing the digest
+    let hasher = if diff_id.is_empty() || diff_id.starts_with(DIGEST_SHA256_PREFIX) {
+        LayerDigestHasher::Sha256(sha2::Sha256::new())
+    } else if diff_id.starts_with(DIGEST_SHA512_PREFIX) {
+        LayerDigestHasher::Sha512(sha2::Sha512::new())
+    } else {
+        return Err(StreamError::UnsupportedDigestFormat(diff_id.to_string()));
+    };
+
+    // Create the destination directory if it doesn't exist
+    tokio::fs::create_dir_all(destination)
+        .await
+        .map_err(|source| StreamError::FailedToRollBack { source })?;
+
+    // Write raw WASM bytes to file while computing hash
+    let wasm_file_path = destination.join("module.wasm");
+    info!("wasm_stream_processing: writing to {:?}", wasm_file_path);
+
+    let mut hash_reader = HashReader::new(layer_reader, hasher);
+    let mut wasm_file = tokio::fs::File::create(&wasm_file_path)
+        .await
+        .map_err(|source| StreamError::FailedToRollBack { source })?;
+
+    let bytes_written = tokio::io::copy(&mut hash_reader, &mut wasm_file)
+        .await
+        .map_err(|source| StreamError::FailedToRollBack { source })?;
+
+    info!(
+        "wasm_stream_processing: wrote {} bytes to {:?}",
+        bytes_written, wasm_file_path
+    );
+
+    Ok(hash_reader.hasher.digest_finalize())
 }
 
 async fn async_processing(

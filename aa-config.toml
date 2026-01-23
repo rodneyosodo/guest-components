@@ -1,0 +1,3 @@
+[token_configs]
+[token_configs.coco_kbs]
+url = "http://10.0.2.2:8082"

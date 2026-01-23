@@ -20,12 +20,17 @@ use tokio_util::io::StreamReader;
 use crate::decoder::Compression;
 use crate::layer_store::LayerStore;
 use crate::meta_store::MetaStore;
-use crate::stream::stream_processing;
+use crate::stream::{stream_processing, wasm_stream_processing};
 use crate::{
     decoder::DecodeError,
     decrypt::{DecryptLayerError, Decryptor},
 };
 use crate::{image::LayerMeta, stream::StreamError};
+
+/// Check if a media type represents a WASM layer (not a tar archive)
+fn is_wasm_media_type(media_type: &str) -> bool {
+    media_type.contains("wasm.content.layer")
+}
 
 pub type PullLayerResult<T> = std::result::Result<T, PullLayerError>;
 
@@ -171,10 +176,18 @@ impl<'a> PullClient<'a> {
 
         let decryptor = Decryptor::from_media_type(&layer.media_type);
 
+        log::info!(
+            "Layer media_type='{}', decryptor.is_encrypted={}, decryptor.media_type='{}'",
+            layer.media_type,
+            decryptor.is_encrypted(),
+            decryptor.media_type
+        );
+
         // There are two types of layers:
         // 1. Compressed layer = Compress(Layer Data)
         // 2. Encrypted+Compressed layer = Compress(Encrypt(Layer Data))
         if decryptor.is_encrypted() {
+            log::info!("Taking encrypted path, getting decrypt key...");
             let decrypt_key = tokio::task::spawn_blocking({
                 let decryptor = decryptor.clone();
                 let layer = layer.clone();
@@ -182,8 +195,16 @@ impl<'a> PullClient<'a> {
                 move || decryptor.get_decrypt_key(&layer, &decrypt_config.as_deref())
             })
             .await??;
+            log::info!(
+                "Got decrypt key ({} bytes), creating plaintext layer...",
+                decrypt_key.len()
+            );
             let plaintext_layer =
                 decryptor.async_get_plaintext_layer(layer_reader, &layer, &decrypt_key)?;
+            log::info!(
+                "Calling async_decompress_unpack_layer with media_type='{}'",
+                decryptor.media_type
+            );
             layer_meta.uncompressed_digest = self
                 .async_decompress_unpack_layer(
                     plaintext_layer,
@@ -205,7 +226,9 @@ impl<'a> PullClient<'a> {
         }
 
         // uncompressed digest should equal to the diff_ids in image_config.
-        if layer_meta.uncompressed_digest != diff_id {
+        // Skip validation if diff_id is empty (used for encrypted images where
+        // the decrypted digest is unknown until after decryption)
+        if !diff_id.is_empty() && layer_meta.uncompressed_digest != diff_id {
             return Err(PullLayerError::UnequalUncompressedDigest {
                 uncompressed_digest: layer_meta.uncompressed_digest,
                 diff_id,
@@ -226,9 +249,25 @@ impl<'a> PullClient<'a> {
     ) -> PullLayerResult<String> {
         let decoder = Compression::try_from(media_type)?;
         let async_decoder = decoder.async_decompress(input_reader);
-        stream_processing(async_decoder, diff_id, destination)
-            .await
-            .map_err(Into::into)
+
+        // WASM layers are raw binary files, not tar archives
+        if is_wasm_media_type(media_type) {
+            log::info!(
+                "Detected WASM media type '{}', using wasm_stream_processing",
+                media_type
+            );
+            wasm_stream_processing(async_decoder, diff_id, destination)
+                .await
+                .map_err(Into::into)
+        } else {
+            log::debug!(
+                "Using standard stream_processing for media type '{}'",
+                media_type
+            );
+            stream_processing(async_decoder, diff_id, destination)
+                .await
+                .map_err(Into::into)
+        }
     }
 }
 
