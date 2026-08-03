@@ -16,7 +16,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use tokio::fs;
 use tonic::{transport::Server, Request, Response, Status};
-use tracing::debug;
+use tracing::{debug, error};
 
 use protocol::keyprovider_structs::*;
 
@@ -25,10 +25,15 @@ pub mod protocol;
 pub struct KeyProvider {
     auth_private_key: Option<Ed25519KeyPair>,
     kbs: Option<Url>,
+    cert: Option<String>,
 }
 
 impl KeyProvider {
-    pub fn new(auth_private_key: Option<Ed25519KeyPair>, kbs: Option<String>) -> Result<Self> {
+    pub fn new(
+        auth_private_key: Option<Ed25519KeyPair>,
+        kbs: Option<String>,
+        cert: Option<String>,
+    ) -> Result<Self> {
         let kbs = match kbs {
             Some(addr) => addr.parse().ok(),
             None => None,
@@ -37,6 +42,7 @@ impl KeyProvider {
         Ok(Self {
             auth_private_key,
             kbs,
+            cert,
         })
     }
 }
@@ -91,6 +97,7 @@ impl KeyProviderService for KeyProvider {
 
         let annotation: String = enc_optsdata_gen_anno(
             (&self.kbs, &self.auth_private_key),
+            self.cert.clone(),
             &engine
                 .decode(optsdata)
                 .map_err(|_| Status::aborted("base64 decode"))?,
@@ -171,13 +178,15 @@ impl KeyProviderService for KeyProvider {
                 })?
         };
 
-        let kek = get_kek(&kbs_url_with_addr, &kbs_path).await.map_err(|e| {
-            error!(
-                "Failed to get KEK from KBS for kid={}: {:?}",
-                annotation.kid, e
-            );
-            Status::internal("Failed to get KEK from KBS")
-        })?;
+        let kek = get_kek(&kbs_url_with_addr, &kbs_path, self.cert.clone())
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to get KEK from KBS for kid={}: {:?}",
+                    annotation.kid, e
+                );
+                Status::internal("Failed to get KEK from KBS")
+            })?;
 
         let wrapped_data = engine
             .decode(&annotation.wrapped_data)
@@ -218,6 +227,7 @@ pub async fn start_service(
     socket: SocketAddr,
     auth_private_key: Option<PathBuf>,
     kbs: Option<String>,
+    cert_file: Option<PathBuf>,
 ) -> Result<()> {
     let auth_private_key = match auth_private_key {
         Some(key_path) => {
@@ -230,10 +240,20 @@ pub async fn start_service(
         None => None,
     };
 
+    let cert = match cert_file {
+        Some(cert_path) => Some(
+            fs::read_to_string(cert_path)
+                .await
+                .context("open KBS certificate")?,
+        ),
+        None => None,
+    };
+
     Server::builder()
         .add_service(KeyProviderServiceServer::new(KeyProvider::new(
             auth_private_key,
             kbs,
+            cert,
         )?))
         .serve(socket)
         .await?;

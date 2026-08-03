@@ -9,13 +9,12 @@ use jwt_simple::prelude::{Claims, Duration, Ed25519KeyPair, EdDSAKeyPairLike};
 use kbs_protocol::{
     evidence_provider::NativeEvidenceProvider, KbsClientBuilder, KbsClientCapabilities, ResourceUri,
 };
-use log::debug;
 use reqwest::Url;
 use tracing::debug;
 
 const KBS_URL_PATH_PREFIX: &str = "kbs/v0/resource";
 
-pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str) -> Result<Vec<u8>> {
+pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str, cert: Option<String>) -> Result<Vec<u8>> {
     let kid = kid.strip_prefix('/').unwrap_or(kid);
 
     // Construct the resource URI in the format: kbs:///<repository>/<type>/<tag>
@@ -27,10 +26,16 @@ pub(crate) async fn get_kek(kbs_addr: &Url, kid: &str) -> Result<Vec<u8>> {
 
     let evidence_provider = NativeEvidenceProvider::new()
         .context("Failed to create evidence provider for attestation")?;
-    let mut kbs_client =
-        KbsClientBuilder::with_evidence_provider(Box::new(evidence_provider), kbs_addr.as_str())
-            .build()
-            .context("Failed to build KBS client")?;
+    let mut builder =
+        KbsClientBuilder::with_evidence_provider(Box::new(evidence_provider), kbs_addr.as_str());
+
+    if let Some(cert) = cert {
+        builder = builder.add_kbs_cert(&cert);
+    }
+
+    let mut kbs_client = builder
+        .build()
+        .context("Failed to build KBS client")?;
 
     let mut key = kbs_client.get_resource(resource_uri).await?;
 
@@ -63,13 +68,20 @@ pub(crate) async fn register_kek(
     kbs_addr: &Url,
     key: Vec<u8>,
     kid: &str,
+    cert: Option<String>,
 ) -> Result<()> {
     let kid = kid.strip_prefix('/').unwrap_or(kid);
     let claims = Claims::create(Duration::from_hours(2));
     let token = private_key.sign(claims)?;
     debug!("sign claims.");
 
-    let client = reqwest::Client::new();
+    let mut client_builder = reqwest::Client::builder();
+    if let Some(cert) = cert {
+        let cert = reqwest::Certificate::from_pem(cert.as_bytes())
+            .context("read KBS public key cert")?;
+        client_builder = client_builder.add_root_certificate(cert);
+    }
+    let client = client_builder.build().context("build reqwest client")?;
     let mut resource_url = kbs_addr.clone();
 
     let path = format!("{KBS_URL_PATH_PREFIX}/{kid}");

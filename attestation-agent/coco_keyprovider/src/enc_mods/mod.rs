@@ -150,7 +150,7 @@ async fn generate_key_parameters(input_params: &InputParams) -> Result<(Vec<u8>,
 /// Normalize the given keyid into (kbs addr, key path), s.t.
 /// converting `kbs://...` or `../..` to `(<kbs-addr>, <repository>/<type>/<tag>)`.
 /// Supports both `kbs://` and `kbs+<plugin>://` schemes.
-fn normalize_path(key_id: &str) -> Result<(String, String)> {
+pub(crate) fn normalize_path(key_id: &str) -> Result<(String, String)> {
     debug!("normalize key id {key_id}");
 
     if let Ok(resource_uri) = ResourceUri::try_from(key_id) {
@@ -196,6 +196,7 @@ fn normalize_path(key_id: &str) -> Result<(String, String)> {
 /// | algorithm | `A256GCM` or `A256CTR`               | Encryption algorithm, included in the `wrap_type` field of AnnotationPacket. By default `A256GCM`|
 pub async fn enc_optsdata_gen_anno(
     kbs_parameter: (&Option<Url>, &Option<Ed25519KeyPair>),
+    cert: Option<String>,
     optsdata: &[u8],
     params: Vec<String>,
 ) -> Result<String> {
@@ -213,7 +214,7 @@ pub async fn enc_optsdata_gen_anno(
     if let (Some(addr), Some(private_key)) = kbs_parameter {
         if !input_params.sample {
             // We do not register KEK for sample kbc
-            register_kek(private_key, addr, key, &k_path)
+            register_kek(private_key, addr, key, &k_path, cert)
                 .await
                 .context("register KEK failed")?;
             info!("register KEK succeeded.");

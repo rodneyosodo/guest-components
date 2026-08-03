@@ -37,6 +37,11 @@ struct Cli {
     #[arg(long)]
     kbs: Option<String>,
 
+    /// Path to the PEM-encoded certificate (or CA bundle) used to verify
+    /// the Key Broker Service over TLS. Ignored if `kbs` is not set.
+    #[arg(long)]
+    cert_file: Option<PathBuf>,
+
     /// Whether this process is launched in daemon mode. If it is set to
     /// true, the stdio and stderr will be redirected to
     /// `/run/confidential-containers/coco_keyprovider.out` and
@@ -116,7 +121,7 @@ loglevel: {env_filter}
         daemonize.start().context("daemonize failed")?;
     }
 
-    grpc::start_service(cli.socket, cli.auth_private_key, cli.kbs).await?;
+    grpc::start_service(cli.socket, cli.auth_private_key, cli.kbs, cli.cert_file).await?;
 
     Ok(())
 }
